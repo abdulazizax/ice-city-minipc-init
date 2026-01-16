@@ -1,0 +1,65 @@
+services:
+  backend:
+    image: kupalovmuhammadjo/turniket:latest
+    network_mode: host
+    restart: unless-stopped
+    privileged: true
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    devices:
+      - /dev/ttyACM0:/dev/ttyACM0
+      - /dev/ttyACM1:/dev/ttyACM1
+      - /dev/ttyUSB0:/dev/ttyUSB0
+      - /dev/ttyUSB1:/dev/ttyUSB1
+      - /dev/bus/usb:/dev/bus/usb
+    volumes:
+      - /dev/serial/by-id:/dev/serial/by-id:ro
+    # Additional groups so container user can access serial devices
+    group_add:
+      - "dialout"
+      - "tty"
+    environment:
+      HTTP_ADDR: ":8088"
+      VALIDATOR_URL: "${VALIDATOR_URL:-http://ice-city-kassa.knative-fn.u-code.io}"
+      VALIDATOR_TOKEN: "${VALIDATOR_TOKEN:-}"
+      NFC_SOURCE: "${NFC_SOURCE:-none}"
+      PSEUDO_ALLOW_ALL: "${PSEUDO_ALLOW_ALL:-false}"
+      GATE_SERIAL_PORT: "${GATE_SERIAL_PORT:-}"
+      GATE_OPEN_TIMEOUT_S: 5
+      GATE_CONNECT_RETRY_S: 7
+      MAC_ADDRESS: "${MAC_ADDRESS:-}"
+
+  kiosk:
+    build:
+      context: ./kiosk
+      dockerfile: Dockerfile
+    image: kupalovmuhammadjo/turniket-kiosk:latest
+    container_name: turniket-kiosk
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    depends_on:
+      - backend
+    environment:
+      LAUNCH_URL: "http://localhost:8088/frontend/index.html"
+      DISPLAY: ":0"
+      QT_QPA_PLATFORM: "xcb"
+      GDK_BACKEND: "x11"
+    network_mode: host
+    restart: unless-stopped
+    privileged: false
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    # Wait for X server to be ready
+    healthcheck:
+      test: ["CMD", "xdpyinfo", "-display", ":0"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --interval 60 --cleanup --label-enable

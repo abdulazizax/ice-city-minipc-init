@@ -1,0 +1,15 @@
+[Unit]
+Description=MinIPC stack autostart (pull latest and up)
+After=network-online.target docker.service
+Wants=network-online.target docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/Users/udevs/udevs/ice_city/minipc_init
+ExecStart=/bin/bash -lc '/Users/udevs/udevs/ice_city/minipc_init/autostart.sh'
+RemainAfterExit=yes
+User=udevs
+Group=udevs
+
+[Install]
+WantedBy=multi-user.target
