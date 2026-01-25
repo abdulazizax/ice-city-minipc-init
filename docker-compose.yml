@@ -1,6 +1,6 @@
 services:
   backend:
-    image: kupalovmuhammadjo/turniket:latest
+    image: abdulazizax/turniket:latest
     network_mode: host
     restart: unless-stopped
     privileged: true
@@ -51,7 +51,7 @@ services:
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
     # Wait for X server to be ready
     healthcheck:
-      test: ["CMD", "xdpyinfo", "-display", ":0"]
+      test: [ "CMD", "xdpyinfo", "-display", ":0" ]
       interval: 10s
       timeout: 5s
       retries: 3
