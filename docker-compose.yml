@@ -1,6 +1,7 @@
 services:
   backend:
     image: abdulazizax/turniket:latest
+    container_name: turniket-backend
     network_mode: host
     restart: unless-stopped
     privileged: true
@@ -13,7 +14,9 @@ services:
       - /dev/ttyUSB1:/dev/ttyUSB1
       - /dev/bus/usb:/dev/bus/usb
     volumes:
-      - /dev/serial/by-id:/dev/serial/by-id:ro
+      - /dev:/dev # Mount entire /dev for dynamic USB support
+      - /sys:/sys # Allow access to USB power control
+
     # Additional groups so container user can access serial devices
     group_add:
       - "dialout"
