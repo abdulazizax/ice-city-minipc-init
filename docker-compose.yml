@@ -23,7 +23,7 @@ services:
       - "tty"
     environment:
       HTTP_ADDR: ":8088"
-      VALIDATOR_URL: "${VALIDATOR_URL:-http://ice-city-kassa.knative-fn.u-code.io}"
+      VALIDATOR_URL: "${VALIDATOR_URL:-http://192.168.1.40:8081}"
       VALIDATOR_TOKEN: "${VALIDATOR_TOKEN:-}"
       NFC_SOURCE: "${NFC_SOURCE:-none}"
       PSEUDO_ALLOW_ALL: "${PSEUDO_ALLOW_ALL:-false}"
