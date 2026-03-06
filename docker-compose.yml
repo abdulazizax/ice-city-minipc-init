@@ -23,8 +23,8 @@ services:
       - "tty"
     environment:
       HTTP_ADDR: ":8088"
-      # VALIDATOR_URL: "${VALIDATOR_URL:-https://kassa.ice-city.u-code.io}"
-      VALIDATOR_URL: "${VALIDATOR_URL:-http://192.168.1.40:8080}"
+      VALIDATOR_URL: "${VALIDATOR_URL:-https://kassa.ice-city.u-code.io}"
+      # VALIDATOR_URL: "${VALIDATOR_URL:-http://192.168.1.40:8080}"
       VALIDATOR_TOKEN: "${VALIDATOR_TOKEN:-}"
       NFC_SOURCE: "${NFC_SOURCE:-none}"
       PSEUDO_ALLOW_ALL: "${PSEUDO_ALLOW_ALL:-false}"
