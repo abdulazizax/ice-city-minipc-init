@@ -60,11 +60,11 @@ Open a browser and navigate to the repository on GitHub:
 
 Open the repo page, click the green **Code** button:
 
-![Repository page](kiosk/2.jpg)
+![Repository page](kiosk/2.png)
 
 Copy the HTTPS clone URL:
 
-![Copy clone URL](kiosk/3.jpg)
+![Copy clone URL](kiosk/3.png)
 
 Then clone it on the mini PC, pasting the URL you copied above:
 
