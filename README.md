@@ -1,181 +1,117 @@
-# Ice City — MiniPC Init
+# Ice City — Turnstile Mini PC Setup
 
-Provisioning and autostart setup for the Ice City turnstile (turniket) system running on a mini PC. This repo brings up two Docker services — the turnstile **backend** and a Chromium **kiosk** browser displaying the frontend — and keeps them updated automatically via Watchtower.
+Step-by-step guide to set up the mini PC that runs the Ice City turnstile (turniket).
 
-## System overview
+## 1. Install the OS
+Install **Xubuntu 22.04 (Jammy)** on the mini PC.
 
-| Service | Image | Purpose |
-|---|---|---|
-| `backend` | `abdulazizax/turniket:latest` | Turnstile control logic: talks to the gate controller over serial/USB (`/dev/ttyACM*`, `/dev/ttyUSB*`), validates passes against the validator server, serves the frontend on `:8088`. Runs with `network_mode: host` and `privileged: true` for direct device access. |
-| `kiosk` | built from [`kiosk/Dockerfile`](kiosk/Dockerfile) | Chromium in kiosk mode, fullscreen, pointed at `http://localhost:8088/frontend/index.html`. Waits for the X server before launching ([`kiosk/entrypoint.sh`](kiosk/entrypoint.sh)). |
-| `watchtower` | `containrrr/watchtower` | Polls Docker Hub every 60s and auto-updates/restarts `backend` and `kiosk` when new images are pushed. |
+- Video tutorial: https://youtu.be/suYEf1ERnP4?si=ra14UM0DLsXk9Ain
+- Download (ISO): https://cdimage.ubuntu.com/xubuntu/releases/jammy/release/xubuntu-22.04.5-desktop-amd64.iso
+- All releases: https://cdimage.ubuntu.com/xubuntu/releases/jammy/release/
 
-All configuration lives in [`docker-compose.yml`](docker-compose.yml).
-
-## Prerequisites
-
-- A mini PC with **Ubuntu/Debian (Debian 13 "Trixie" recommended)**.
-- Physical access to the turnstile network (subnet `192.168.7.0/24`).
-- Docker Engine with the Compose v2 plugin (`docker compose`, not the old `docker-compose`).
-- The turnstile gate controller connected via USB/serial.
-
-## Full setup — from bare metal to running turnstile
-
-### 1. Install the OS
-Install Ubuntu/Debian Server on the mini PC.
-
-### 2. Configure a static IP
-Connect the mini PC to the turnstile network and assign it a **free, unused IP** on the `192.168.7.0/24` subnet:
+## 2. Configure a static IP
+Connect the mini PC to the turnstile network and give it a **free, unused IP** on the `192.168.7.0/24` subnet:
 
 ```
 Gateway: 192.168.7.10
-Mask:    /24 (255.255.255.0)
-DNS/Internet: 8.8.8.8
+Mask:    24
+Internet: 8.8.8.8
 ```
 
-The validator server lives at `192.168.7.10` — the backend talks to it directly (see `VALIDATOR_URL` below), so the mini PC must be reachable on this subnet.
+## 3. Reboot
+Reboot the mini PC so the static IP takes effect.
 
-### 3. Reboot
-Reboot after applying the static IP so the network settings persist correctly.
-
-### 4. Verify connectivity
+## 4. Check the internet
 ```bash
 ping 8.8.8.8
 ```
 
-### 5. Update the system
+## 5. Update the system
 ```bash
-sudo apt update && sudo apt upgrade -y
+sudo apt update && sudo apt upgrade
 ```
 
-### 6. Install Git
+## 6. Install Git
 ```bash
-sudo apt install -y git
+sudo apt install git
 ```
 
-### 7. Clone the repository
-Open a browser and navigate to the repository on GitHub:
+## 7. Create a folder and go into it
+```bash
+mkdir icecity && cd icecity
+```
+
+## 8. Clone the project
+Open the repository in a browser:
 
 ![Navigate to the repo](kiosk/1.jpg)
 
-Open the repo page, click the green **Code** button:
+Click the green **Code** button:
 
 ![Repository page](kiosk/2.png)
 
-Copy the HTTPS clone URL:
+Copy the URL:
 
 ![Copy clone URL](kiosk/3.png)
 
-Then clone it on the mini PC, pasting the URL you copied above:
+Then clone it with the copied URL:
 
 ```bash
-mkdir -p ~/icecity && cd ~/icecity
 git clone <paste-the-copied-url-here> .
 ```
 
-### 8. Run the setup script
-Runs system provisioning: installs Docker and dependencies, sets up user permissions, and installs the `minipc-init` systemd service so the stack starts on every boot.
-
+## 9. Run the setup script
 ```bash
 sudo chmod +x setup.sh
 sudo ./setup.sh
 ```
 
-### 9. Reboot again
-So Docker, group permissions, and the systemd service take effect.
+## 10. Reboot again
+So everything the setup script installed takes effect.
 
-### 10. Bring the stack up
-After reboot, from the project directory:
+## 11. Start the turnstile
+Go back into the project folder and run:
 
 ```bash
 docker compose pull && docker compose up -d
 ```
 
-The turnstile is now live. From this point on, the `minipc-init` systemd service (see below) takes over and keeps it running across reboots.
+## 12. Done
+The turnstile is now running.
 
-## Configuration (`.env`)
+---
 
-Create a `.env` file next to `docker-compose.yml` to override defaults:
+## Arduino setup
 
-```bash
-VALIDATOR_URL=http://192.168.7.10:8080
-VALIDATOR_TOKEN=
-NFC_SOURCE=none
-PSEUDO_ALLOW_ALL=false
-GATE_SERIAL_PORT=
-MAC_ADDRESS=
-```
+The turnstile gate is controlled by an Arduino running [`arduino_code/arduino_code.ino`](arduino_code/arduino_code.ino).
 
-| Variable | Default | Description |
-|---|---|---|
-| `VALIDATOR_URL` | `http://192.168.7.10:8080` | Address of the validator/kassa server used to check passes. |
-| `VALIDATOR_TOKEN` | *(empty)* | Auth token for the validator API, if required. |
-| `NFC_SOURCE` | `none` | NFC reader source, if used. |
-| `PSEUDO_ALLOW_ALL` | `false` | Debug/testing flag — allows all passes when `true`. **Never enable in production.** |
-| `GATE_SERIAL_PORT` | *(empty)* | Explicit serial port for the gate controller, if auto-detection isn't used. |
-| `MAC_ADDRESS` | *(empty)* | Device identifier reported by the backend. |
+### Uploading the sketch
 
-`autostart.sh` loads `.env` automatically before starting the stack.
+1. Install the [Arduino IDE](https://www.arduino.cc/en/software) and open `arduino_code/arduino_code.ino`.
+2. Connect the Arduino to your laptop with a USB cable.
+3. Go to **Tools → Board** and select your Arduino model. Then go to **Tools → Port** and select the port the Arduino is connected to (shown at the bottom of the window).
 
-## Autostart on boot
+   ![Board and port selected](kiosk/1.1.png)
 
-Two files wire the stack into systemd so it survives reboots and power loss:
+4. Click the **Upload** (→) button.
 
-- **[`autostart.sh`](autostart.sh)** — idempotent script that loads `.env`, checks the Docker daemon, runs `docker compose pull` (best-effort) and `docker compose up -d --remove-orphans`, then prunes dangling images.
-- **[`minipc-init.service`](minipc-init.service)** — systemd unit that runs `autostart.sh` once on boot, after Docker and networking are up.
+   ![Uploading](kiosk/1.2.png)
 
-### Install the service
+5. Wait until you see **"Done uploading"**.
 
-```bash
-chmod +x ./autostart.sh
-sudo cp ./minipc-init.service /etc/systemd/system/minipc-init.service
-sudo systemctl daemon-reload
-sudo systemctl enable minipc-init.service
-sudo systemctl start minipc-init.service
-```
+   ![Upload finished](kiosk/1.3.png)
 
-> **Note:** Edit `WorkingDirectory`, `ExecStart`, `User`, and `Group` in [`minipc-init.service`](minipc-init.service) to match where you cloned the repo and which user should run it.
+### Wiring
 
-### Manual run / update
+**Relay:**
+1. Relay `IN` → Arduino pin `8`
+2. Relay `GND` → Arduino power `GND`
+3. Relay `VCC` → Arduino power `5V`
 
-To pull the latest images and restart the stack at any time:
+**USB-TTL:**
+1. USB-TTL `GND` → Arduino power `GND`
+2. USB-TTL `RXD` → Arduino `TX`
+3. USB-TTL `TXD` → Arduino `RX`
+4. USB-TTL `5V` → Arduino analog in `Vin`
 
-```bash
-./autostart.sh
-```
-
-## Automatic updates (Watchtower)
-
-Watchtower is included as a service in `docker-compose.yml`. It checks every 60 seconds for new versions of images labeled `com.centurylinklabs.watchtower.enable=true` (both `backend` and `kiosk` carry this label) and restarts them automatically when a new image is pushed to Docker Hub.
-
-To disable auto-updates, comment out or remove the `watchtower` service in `docker-compose.yml`.
-
-## Useful commands
-
-```bash
-# View logs
-docker compose logs -f backend
-docker compose logs -f kiosk
-
-# Restart a single service
-docker compose restart backend
-
-# Check status
-docker compose ps
-
-# Stop everything
-docker compose down
-```
-
-## Repository layout
-
-```
-.
-├── docker-compose.yml       # backend, kiosk, watchtower services
-├── kiosk/
-│   ├── Dockerfile           # Chromium kiosk image
-│   └── entrypoint.sh        # waits for X server, launches Chromium in kiosk mode
-├── autostart.sh             # pulls latest images and (re)starts the stack
-├── minipc-init.service      # systemd unit that runs autostart.sh on boot
-└── README.md
-```
+Now connect the Arduino to the mini PC with a USB cable — it will be detected automatically.
