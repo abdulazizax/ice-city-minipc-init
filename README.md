@@ -21,53 +21,21 @@ Internet: 8.8.8.8
 ## 3. Reboot
 Reboot the mini PC so the static IP takes effect.
 
-## 4. Check the internet
-```bash
-ping 8.8.8.8
-```
-
-## 5. Update the system
-```bash
-sudo apt update && sudo apt upgrade
-```
-
-## 6. Install Git
-```bash
-sudo apt install git
-```
-
-## 7. Create a folder and go into it
-```bash
-cd ~
-mkdir icecity && cd icecity
-```
-
-## 8. Clone the project
-```bash
-git clone https://github.com/abdulazizax/ice-city-minipc-init.git
-cd ice-city-minipc-init
-```
-
-## 9. Run the setup script
-```bash
-cd ~/icecity/ice-city-minipc-init
-sudo chmod +x setup.sh
-sudo ./setup.sh
-```
-
-## 10. Reboot again
-So everything the setup script installed takes effect.
-
-## 11. Start the turnstile
-Go back into the project folder and run:
+## 4. Run the setup
+Open a terminal (**Ctrl + Alt + T**), paste the block below (**Ctrl + Shift + V**) and press **Enter**:
 
 ```bash
-cd ~/icecity/ice-city-minipc-init
-docker compose pull && docker compose up -d
+sudo apt update && sudo apt install -y git && \
+git clone https://github.com/abdulazizax/ice-city-minipc-init.git ~/icecity/ice-city-minipc-init && \
+cd ~/icecity/ice-city-minipc-init && sudo ./setup.sh && sudo reboot
 ```
 
-## 12. Done
-The turnstile is now running.
+When it asks for the password, type it and press **Enter** (the password is not shown while typing).
+
+This takes several minutes. At the end the mini PC restarts by itself.
+
+## 5. Done
+After the restart the turnstile starts automatically.
 
 ---
 
