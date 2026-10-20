@@ -43,27 +43,14 @@ mkdir icecity && cd icecity
 ```
 
 ## 8. Clone the project
-Open the repository in a browser:
-
-![Navigate to the repo](kiosk/1.jpg)
-
-Click the green **Code** button:
-
-![Repository page](kiosk/2.png)
-
-Copy the URL:
-
-![Copy clone URL](kiosk/3.png)
-
-Then clone it with the copied URL:
-
 ```bash
-git clone <paste-the-copied-url-here> .
+git clone https://github.com/abdulazizax/ice-city-minipc-init.git
+cd ice-city-minipc-init
 ```
 
 ## 9. Run the setup script
 ```bash
-cd ~/icecity
+cd ~/icecity/ice-city-minipc-init
 sudo chmod +x setup.sh
 sudo ./setup.sh
 ```
@@ -75,7 +62,7 @@ So everything the setup script installed takes effect.
 Go back into the project folder and run:
 
 ```bash
-cd ~/icecity
+cd ~/icecity/ice-city-minipc-init
 docker compose pull && docker compose up -d
 ```
 
