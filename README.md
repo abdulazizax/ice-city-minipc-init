@@ -38,6 +38,7 @@ sudo apt install git
 
 ## 7. Create a folder and go into it
 ```bash
+cd ~
 mkdir icecity && cd icecity
 ```
 
@@ -62,6 +63,7 @@ git clone <paste-the-copied-url-here> .
 
 ## 9. Run the setup script
 ```bash
+cd ~/icecity
 sudo chmod +x setup.sh
 sudo ./setup.sh
 ```
@@ -73,6 +75,7 @@ So everything the setup script installed takes effect.
 Go back into the project folder and run:
 
 ```bash
+cd ~/icecity
 docker compose pull && docker compose up -d
 ```
 
