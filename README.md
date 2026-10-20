@@ -37,6 +37,29 @@ This takes several minutes. At the end the mini PC restarts by itself.
 ## 5. Done
 After the restart the turnstile starts automatically.
 
+## Find the MAC address
+Open a terminal (**Ctrl + Alt + T**), paste the command below and press **Enter**:
+
+```bash
+printf '%-16s %-19s %-6s %s\n' PORT MAC STATUS IP
+for i in /sys/class/net/*; do
+  [ -e "$i/device" ] && [ ! -d "$i/wireless" ] || continue
+  n=$(basename "$i")
+  printf '%-16s %-19s %-6s %s\n' "$n" "$(cat "$i/address")" "$(cat "$i/operstate")" "$(ip -4 -br addr show "$n" | awk '{print $3}')"
+done
+```
+
+It prints every Ethernet port of the mini PC, for example:
+
+```
+PORT             MAC                 STATUS IP
+enp1s0           a1:b2:c3:d4:e5:f6   up     192.168.7.55/24
+enp2s0           a1:b2:c3:d4:e5:f7   up     192.168.1.20/24
+enp3s0           a1:b2:c3:d4:e5:f8   down
+```
+
+`up` means a cable is plugged into that port.
+
 ---
 
 ## Arduino setup
