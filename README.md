@@ -26,7 +26,7 @@ Open a terminal (**Ctrl + Alt + T**), paste the block below (**Ctrl + Shift + V*
 
 ```bash
 sudo apt update && sudo apt install -y git && \
-git clone https://github.com/abdulazizax/ice-city-minipc-init.git ~/icecity/ice-city-minipc-init && \
+(git clone https://github.com/abdulazizax/ice-city-minipc-init.git ~/icecity/ice-city-minipc-init || git -C ~/icecity/ice-city-minipc-init pull) && \
 cd ~/icecity/ice-city-minipc-init && sudo ./setup.sh && sudo reboot
 ```
 
