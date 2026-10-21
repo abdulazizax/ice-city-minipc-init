@@ -349,6 +349,16 @@ systemctl enable usb-watchdog.service
 systemctl start usb-watchdog.service
 
 # ─────────────────────────────────────────────
+# 9. START THE TURNSTILE
+# ─────────────────────────────────────────────
+echo ""
+echo "[9/9] Starting the turnstile containers..."
+
+cd "$(dirname "$0")"
+docker compose pull
+docker compose up -d
+
+# ─────────────────────────────────────────────
 # DONE
 # ─────────────────────────────────────────────
 echo ""
@@ -365,6 +375,7 @@ echo "  [x] USB-TTL serial port configured"
 echo "  [x] ModemManager removed"
 echo "  [x] USB autosuspend disabled (GRUB + systemd + udev)"
 echo "  [x] USB port recovery watchdog installed"
+echo "  [x] Turnstile containers started"
 echo ""
 echo "  REBOOT REQUIRED: sudo reboot"
 echo ""
