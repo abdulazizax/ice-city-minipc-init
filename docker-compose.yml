@@ -1,6 +1,6 @@
 services:
   backend:
-    image: javohirsaydakhmatov/turniket:latest
+    image: javohirsaydakhmatov/turniket:staging
     container_name: turniket-backend
     network_mode: host
     restart: unless-stopped
