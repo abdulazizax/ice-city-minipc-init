@@ -1,27 +1,57 @@
 #include <avr/wdt.h>
 #include <string.h>
 
-// Pin definitions
-int switchPin = 2;
-int relayPin = 8;
-int resetPin = 12;
+// Serial protocol (9600 baud, unchanged so old and new firmware work with the
+// same Go backend):
+//   from host: OPEN, CLOSE, STATUS, REBOOT
+//   to host:   "Gate OPENED", "Gate CLOSED", "PASS", "TIMEOUT",
+//              "OPEN ignored (...)", "=== STATUS ===" block, "READY"
+// "PASS" / "TIMEOUT" are always sent before the "Gate CLOSED" they cause.
 
-// State tracking
-bool gateIsOpen = false;
-bool passSentThisOpen = false; // only one PASS per gate-open cycle (sensor bounce / multi-trigger)
-bool lastSwitchState = HIGH;
-unsigned long lastTriggerTime = 0;
-unsigned long debounceDelay = 500; // ms — sensors close together can bounce; 200ms was too short
-unsigned long lastHeartbeat = 0;
+// Pin definitions. switchPin must be an interrupt pin (2 or 3 on Uno/Nano).
+const int switchPin = 2;
+const int relayPin = 8;
+const int resetPin = 12;
 
-// Auto-close: if nobody passes within this time, Arduino closes the gate itself
-unsigned long gateOpenTime = 0;
-const unsigned long AUTO_CLOSE_MS = 5000;
-
-// Cooldown after gate close: reject OPEN commands for this duration.
-// Prevents duplicate OPEN from one scan burst; keep low so the next person is not blocked in high traffic.
-unsigned long gateCloseTime = 0;
+// Ignore sensor edges closer than this (contact bounce of one rotation).
+const unsigned long DEBOUNCE_MS = 200;
+// Ignore a sensor edge this soon after opening: nobody passes this fast, so it
+// is noise or the arm settling.
+const unsigned long MIN_OPEN_MS = 100;
+// Auto-close: if nobody passes within this time, the Arduino closes the gate.
+const unsigned long AUTO_CLOSE_MS = 3000;
+// Cooldown after a close: reject OPEN for this long. Prevents a duplicate OPEN
+// from one scan burst; low so the next person is not blocked.
 const unsigned long CLOSE_COOLDOWN_MS = 800;
+
+// State shared with the interrupt handler.
+volatile bool gateIsOpen = false;
+volatile bool passPending = false;
+volatile unsigned long gateOpenTime = 0;
+volatile unsigned long gateCloseTime = 0;
+volatile unsigned long lastTriggerTime = 0;
+
+unsigned long lastHeartbeat = 0;
+unsigned long lastAnnounce = 0;
+
+// onSwitchFalling runs the moment the rotation sensor fires, even while the
+// loop is busy writing to serial. It locks the gate right away; the loop then
+// reports PASS. Polling missed short pulses during long serial writes, which
+// left the gate unlocked until the auto-close and let it turn several times.
+void onSwitchFalling() {
+  unsigned long now = millis();
+  if (now - lastTriggerTime < DEBOUNCE_MS) return;
+  lastTriggerTime = now;
+
+  if (!gateIsOpen) return;
+  if (now - gateOpenTime < MIN_OPEN_MS) return;
+
+  digitalWrite(relayPin, LOW);
+  gateIsOpen = false;
+  gateCloseTime = now;
+  if (gateCloseTime == 0) gateCloseTime = 1;
+  passPending = true;
+}
 
 void setup() {
   wdt_enable(WDTO_8S);
@@ -34,79 +64,90 @@ void setup() {
   digitalWrite(relayPin, LOW);
   gateIsOpen = false;
 
-  // ✅ Initialize serial and wait for USB connection
   Serial.begin(9600);
   while (!Serial && millis() < 5000) {
-    // Wait up to 5 seconds for USB serial to connect
     delay(100);
   }
   Serial.setTimeout(100);
+  delay(200);
 
-  delay(200); // Extra stabilization
-
-  // ✅ Send READY signal immediately (needed for Go handshake)
   Serial.println("READY");
-  // Serial.println("GATE-V8-ONEPASS");
-  // Serial.println("Commands: OPEN, CLOSE, STATUS, REBOOT");
-  // Serial.println("");
+  Serial.println("GATE-V8-INTERRUPT");
+  Serial.println("Commands: OPEN, CLOSE, STATUS, REBOOT");
 
-  lastSwitchState = digitalRead(switchPin);
+  attachInterrupt(digitalPinToInterrupt(switchPin), onSwitchFalling, FALLING);
+
   lastHeartbeat = millis();
-
-  // printStatus(); // debug: initial status spam
+  lastAnnounce = millis();
+  printStatus();
 }
 
 void loop() {
   wdt_reset();
 
-  // ✅ Detect USB disconnect and reconnect
   if (!Serial) {
-    // USB disconnected - wait for reconnection
     while (!Serial) {
+      wdt_reset();
       delay(100);
     }
-    // USB reconnected - re-announce
-    delay(200); // Let USB stabilize
+    delay(200);
     Serial.println("READY");
-    // Serial.println("🔌 USB Reconnected");
-    // printStatus();
+    Serial.println("USB Reconnected");
+    printStatus();
   }
 
-  // ✅ Announce presence every 2 seconds (disabled — floods serial logs)
-  // static unsigned long lastAnnounce = 0;
-  // if (millis() - lastAnnounce > 2000) {
-  //   Serial.println("READY");
-  //   lastAnnounce = millis();
-  // }
-
-  // Switch detection
-  bool currentSwitchState = digitalRead(switchPin);
-  if (lastSwitchState == HIGH && currentSwitchState == LOW) {
-    if (millis() - lastTriggerTime > debounceDelay) {
-      if (gateIsOpen && !passSentThisOpen) {
-        // PASS must be sent BEFORE closeGate() so the host receives "PASS" before "Gate CLOSED".
-        // Otherwise Go clears lastOpenedAccess on CLOSED and /pass is never sent.
-        passSentThisOpen = true;
-        Serial.println("PASS");
-        closeGate();
-      } else {
-        // Serial.println("SWITCH:ignored");
-      }
-      lastTriggerTime = millis();
-    }
+  // A pass caught by the interrupt: the gate is already locked.
+  bool passed;
+  noInterrupts();
+  passed = passPending;
+  passPending = false;
+  interrupts();
+  if (passed) {
+    Serial.println("PASS");
+    Serial.println("Gate CLOSED");
   }
-  lastSwitchState = currentSwitchState;
 
-  // Serial command processing
+  // Auto-close when nobody passed in time.
+  bool timedOut = false;
+  noInterrupts();
+  if (gateIsOpen && gateOpenTime > 0 && (millis() - gateOpenTime) >= AUTO_CLOSE_MS) {
+    lockGate();
+    timedOut = true;
+  }
+  interrupts();
+  if (timedOut) {
+    Serial.println("TIMEOUT");
+    Serial.println("Gate CLOSED");
+  }
+
+  readCommands();
+
+  // Presence announce (keeps the host's idle watchdog fed).
+  if (millis() - lastAnnounce > 2000) {
+    Serial.println("READY");
+    lastAnnounce = millis();
+  }
+
+  if (millis() - lastHeartbeat > 5000) {
+    Serial.print("OK:");
+    Serial.print(millis());
+    Serial.print(":");
+    Serial.println(gateIsOpen ? "OPEN" : "CLOSED");
+    lastHeartbeat = millis();
+  }
+
+  delay(1);
+}
+
+void readCommands() {
   static char cmdBuffer[32];
   static int cmdIndex = 0;
 
   while (Serial.available()) {
     int inByte = Serial.read();
-    if (inByte < 0)
-      continue;
+    if (inByte < 0) continue;
 
-    // lastAnnounce = millis(); // announce loop disabled
+    lastAnnounce = millis();
 
     if (inByte == '\n' || inByte == '\r') {
       if (cmdIndex > 0) {
@@ -114,113 +155,90 @@ void loop() {
         processCommand(cmdBuffer);
         cmdIndex = 0;
       }
-    } else if (cmdIndex < (sizeof(cmdBuffer) - 1)) {
+    } else if (cmdIndex < (int)(sizeof(cmdBuffer) - 1)) {
       cmdBuffer[cmdIndex++] = (char)inByte;
     } else {
       cmdIndex = 0;
     }
   }
-
-  // Auto-close: if gate is open and nobody passed within AUTO_CLOSE_MS, close it.
-  // TIMEOUT must be sent BEFORE closeGate() so the host receives "TIMEOUT" before "Gate CLOSED".
-  // This lets Go distinguish timeout-close from pass-close (where PASS event may be lost).
-  if (gateIsOpen && gateOpenTime > 0 && (millis() - gateOpenTime) >= AUTO_CLOSE_MS) {
-    Serial.println("TIMEOUT");
-    closeGate();
-  }
-
-  // Heartbeat (disabled — floods serial logs)
-  // if (millis() - lastHeartbeat > 5000) {
-  //   Serial.print("💓 OK:");
-  //   Serial.print(millis());
-  //   Serial.print(":");
-  //   Serial.println(gateIsOpen ? "OPEN" : "CLOSED");
-  //   lastHeartbeat = millis();
-  // }
-
-  delay(10);
 }
 
 // --- COMMAND PROCESSING ---
 void processCommand(char *cmd) {
-  // Remove trailing whitespace
   int len = strlen(cmd);
   while (len > 0 && (cmd[len - 1] == ' ' || cmd[len - 1] == '\t')) {
     cmd[--len] = '\0';
   }
-
-  // Convert to uppercase manually
   for (int i = 0; cmd[i]; i++) {
     cmd[i] = toupper(cmd[i]);
   }
 
-  // Process command
   if (strcmp(cmd, "OPEN") == 0) {
     openGate();
-    // Serial.println("📱 OPEN command received");
   } else if (strcmp(cmd, "CLOSE") == 0) {
     closeGate();
-    // Serial.println("📱 CLOSE command received");
   } else if (strcmp(cmd, "STATUS") == 0) {
-    printStatus(); // silent when printStatus body is commented out
+    printStatus();
   } else if (strcmp(cmd, "REBOOT") == 0) {
-    // Serial.println("♻️ REBOOT command received - resetting now!");
+    Serial.println("REBOOT command received - resetting now");
     delay(100);
     hardwareReset();
   } else if (strlen(cmd) > 0) {
-    Serial.print("❌ Unknown: ");
+    Serial.print("Unknown: ");
     Serial.println(cmd);
   }
 }
 
 // --- GATE CONTROL ---
-void openGate() {
-  // Already open: ignore duplicate OPEN (prevents timer reset from rapid scans)
-  if (gateIsOpen) {
-    Serial.println("⏳ OPEN ignored (already open)");
-    return;
-  }
-  if (gateCloseTime > 0 && (millis() - gateCloseTime) < CLOSE_COOLDOWN_MS) {
-    Serial.println("⏳ OPEN ignored (cooldown active)");
-    return;
-  }
-  digitalWrite(relayPin, HIGH);
-  gateIsOpen = true;
-  passSentThisOpen = false;
-  gateCloseTime = 0;
-  gateOpenTime = millis();
-  if (gateOpenTime == 0) gateOpenTime = 1;
-  Serial.println("🔓 Gate OPENED");
-}
-
-void closeGate() {
+// lockGate drops the relay. Call with interrupts disabled.
+void lockGate() {
   digitalWrite(relayPin, LOW);
   gateIsOpen = false;
   gateCloseTime = millis();
   if (gateCloseTime == 0) gateCloseTime = 1;
-  Serial.println("🔒 Gate CLOSED");
+}
+
+void openGate() {
+  const char *rejected = NULL;
+
+  noInterrupts();
+  if (gateIsOpen) {
+    // Already open: a duplicate OPEN must not restart the timer.
+    rejected = "OPEN ignored (already open)";
+  } else if (gateCloseTime > 0 && (millis() - gateCloseTime) < CLOSE_COOLDOWN_MS) {
+    rejected = "OPEN ignored (cooldown active)";
+  } else {
+    unsigned long now = millis();
+    gateOpenTime = now == 0 ? 1 : now;
+    gateCloseTime = 0;
+    passPending = false;
+    gateIsOpen = true;
+    digitalWrite(relayPin, HIGH);
+  }
+  interrupts();
+
+  if (rejected) {
+    Serial.println(rejected);
+  } else {
+    Serial.println("Gate OPENED");
+  }
+}
+
+void closeGate() {
+  noInterrupts();
+  lockGate();
+  interrupts();
+  Serial.println("Gate CLOSED");
 }
 
 // --- STATUS REPORTING ---
 void printStatus() {
-  // Minimal STATUS response — needed for Go heartbeat health-check.
-  // Go sends STATUS every 5s; without a response it assumes dead link and reconnects.
   Serial.println("=== STATUS ===");
   Serial.print("Gate: ");
   Serial.println(gateIsOpen ? "OPEN" : "CLOSED");
+  Serial.print("Switch: ");
+  Serial.println(digitalRead(switchPin) ? "HIGH" : "LOW");
   Serial.println("================");
-  // Verbose debug lines kept commented:
-  // Serial.print("Switch (Pin 2): ");
-  // Serial.println(switchState ? "HIGH (no motion)" : "LOW (motion)");
-  // Serial.print("Uptime: "); Serial.print(millis() / 1000); Serial.println("s");
-  // Serial.print("Free RAM: "); Serial.print(freeRam()); Serial.println(" bytes");
-}
-
-// --- DEBUG UTILITIES ---
-int freeRam() {
-  extern int __heap_start, *__brkval;
-  int v;
-  return (int)&v - (__brkval == 0 ? (int)&__heap_start : (int)__brkval);
 }
 
 // --- HARDWARE SELF-RESET ---
