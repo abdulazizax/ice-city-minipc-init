@@ -1,6 +1,6 @@
 services:
   backend:
-    image: javohirsaydakhmatov/turniket:staging
+    image: javohirsaydakhmatov/turniket:latest
     container_name: turniket-backend
     network_mode: host
     restart: unless-stopped
@@ -23,7 +23,7 @@ services:
       - "tty"
     environment:
       HTTP_ADDR: ":8088"
-      VALIDATOR_URL: "${VALIDATOR_URL:-https://api-v2-staging.ice-city.uz}"
+      VALIDATOR_URL: "${VALIDATOR_URL:-https://api-v2.ice-city.uz}"
       # VALIDATOR_URL: "${VALIDATOR_URL:-http://192.168.7.10:8080}"
       VALIDATOR_TOKEN: "${VALIDATOR_TOKEN:-}"
       NFC_SOURCE: "${NFC_SOURCE:-none}"
